@@ -143,7 +143,7 @@ void IO() {
   } // if (ProcessToMove)
 }
 
-/***********************************************************************\    
+/***********************************************************************\
  * Input : whichPolicy (1:FCFS, 2: SRTF, and 3:RR)                      *        
  * Output: None                                                         * 
  * Function: Selects Process from Ready Queue and Puts it on Running Q. *
@@ -161,7 +161,7 @@ void CPUScheduler(Identifier whichPolicy) {
   }
 }
 
-/***********************************************************************\                         
+/***********************************************************************\
  * Input : None                                                         *                                     
  * Output: Pointer to the process with shortest remaining time (SRTF)   *                                     
  * Function: Returns process control block with SRTF                    *                                     
@@ -192,7 +192,7 @@ ProcessControlBlock *SRTF() {
   return(selectedProcess);
 }
 
-/***********************************************************************\  
+/***********************************************************************\
  * Input : None                                                         *   
  * Output: None                                                         *   
  * Function:                                                            *
@@ -263,7 +263,7 @@ void NewJobIn(ProcessControlBlock whichProcess){
 }
 
 
-/***********************************************************************\                                                   
+/***********************************************************************\
 * Input : None                                                         *                                                    
 * Output: None                                                         *                                                    
 * Function:                                                            *
