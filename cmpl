@@ -1,0 +1,3 @@
+#!/usr/bin/bash
+
+cc -o pm processesgenerator.o processesmanagement2.c -lm
