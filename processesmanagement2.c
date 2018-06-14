@@ -295,7 +295,7 @@ void BookKeeping(void){
   printf("\n********* Processes Managemenent Numbers ******************************\n");
   printf("Policy Number = %d, Quantum = %.6f   Show = %d\n", PolicyNumber, Quantum, Show);
   printf("Number of Completed Processes = %d\n", NumberofJobs[THGT]);
-  printf("ATAT=%f   ART=%f  CBT = %f  T=%f AWT=%f AWTJQ=%f\n", 
+  printf("ATAT = %f   ART = %f  CBT = %f  T = %f AWT = %f AWTJQ = %f\n", 
 	 SumMetrics[TAT], SumMetrics[RT], SumMetrics[CBT], 
 	 NumberofJobs[THGT]/Now(), SumMetrics[WT], SumMetrics[AWTJQ]);
 
