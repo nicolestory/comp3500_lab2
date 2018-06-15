@@ -19,6 +19,7 @@
 \*****************************************************************************/
 
 typedef enum {TAT,RT,CBT,THGT,WT,AWTJQ} Metric;
+typedef enum {INFINITE,OMAP,PAGING,BESTFIT,WORSFIT} MemPolicy;
 
 
 /*****************************************************************************\
@@ -46,6 +47,7 @@ typedef enum {TAT,RT,CBT,THGT,WT,AWTJQ} Metric;
 
 Quantity NumberofJobs[MAXMETRICS]; // Number of Jobs for which metric was collected
 Average  SumMetrics[MAXMETRICS]; // Sum for each Metrics
+MemPolicy MemoryPolicy;
 
 /*****************************************************************************\
 *                               Function prototypes                           *
@@ -60,6 +62,11 @@ void                 IO();
 void                 CPUScheduler(Identifier whichPolicy);
 ProcessControlBlock *SRTF();
 void                 Dispatcher();
+void                 InfiniteMemory();
+void                 OptimalMemoryAccessPolicy();
+void                 Paging();
+void                 BestFit();
+void                 WorstFit();
 
 /*****************************************************************************\
 * function: main()                                                            *
@@ -87,6 +94,7 @@ int main (int argc, char **argv) {
 \***********************************************************************/
 
 void ManageProcesses(void){
+  MemoryPolicy = INFINITE;
   ManagementInitialization();
   while (1) {
     IO();
@@ -295,7 +303,7 @@ void BookKeeping(void){
   printf("\n********* Processes Managemenent Numbers ******************************\n");
   printf("Policy Number = %d, Quantum = %.6f   Show = %d\n", PolicyNumber, Quantum, Show);
   printf("Number of Completed Processes = %d\n", NumberofJobs[THGT]);
-  printf("ATAT = %f   ART = %f  CBT = %f  T = %f AWT = %f AWTJQ = %f\n", 
+  printf("ATAT = %f ART = %f CBT = %f T = %f AWT = %f AWTJQ = %f\n", 
 	 SumMetrics[TAT], SumMetrics[RT], SumMetrics[CBT], 
 	 NumberofJobs[THGT]/Now(), SumMetrics[WT], SumMetrics[AWTJQ]);
 
@@ -310,6 +318,21 @@ void BookKeeping(void){
 *           then move Process from Job Queue to Ready Queue             *
 \***********************************************************************/
 void LongtermScheduler(void){
+  switch(MemoryPolicy){
+    case INFINITE : InfiniteMemory();
+      break;
+    case OMAP     : OptimalMemoryAccessPolicy();
+      break;
+    case PAGING   : Paging();
+      break;
+    case BESTFIT  : BestFit();
+      break;
+    case WORSFIT  : WorstFit();
+      break;
+  }
+}
+
+void InfiniteMemory(void){
   ProcessControlBlock *currentProcess = DequeueProcess(JOBQUEUE);
   while (currentProcess) {
     currentProcess->TimeInJobQueue = Now() - currentProcess->JobArrivalTime; // Set TimeInJobQueue
@@ -320,6 +343,22 @@ void LongtermScheduler(void){
     currentProcess->state = READY; // Update process state
     currentProcess = DequeueProcess(JOBQUEUE);
   }
+}
+
+void OptimalMemoryAccessPolicy(void){
+  
+}
+
+void Paging(void){
+  
+}
+
+void BestFit(void){
+  
+}
+
+void WorstFit(void){
+  
 }
 
 
