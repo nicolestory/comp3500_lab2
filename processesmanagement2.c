@@ -67,6 +67,7 @@ void                 OptimalMemoryAccessPolicy();
 void                 Paging();
 void                 BestFit();
 void                 WorstFit();
+void                 PutOnReadyQueue(ProcessControlBlock *currentProcess);
 
 /*****************************************************************************\
 * function: main()                                                            *
@@ -94,7 +95,7 @@ int main (int argc, char **argv) {
 \***********************************************************************/
 
 void ManageProcesses(void){
-  MemoryPolicy = INFINITE;
+  MemoryPolicy = OMAP;
   ManagementInitialization();
   while (1) {
     IO();
@@ -220,7 +221,7 @@ void Dispatcher() {
   }
   
   if (processOnCPU->TimeInCpu >= processOnCPU-> TotalJobDuration) { // Process Complete
-    printf(" >>>>>Process # %d complete, %d Processes Completed So Far <<<<<<\n",
+    printf(">>>>>> Process # %d complete, %d Processes Completed So Far <<<<<<\n",
 	   processOnCPU->ProcessID,NumberofJobs[THGT]);   
     processOnCPU=DequeueProcess(RUNNINGQUEUE);
     EnqueueProcess(EXITQUEUE,processOnCPU);
@@ -232,7 +233,7 @@ void Dispatcher() {
     SumMetrics[TAT]     += Now() - processOnCPU->JobArrivalTime;
     SumMetrics[WT]      += processOnCPU->TimeInReadyQueue;
 
-
+    AvailableMemory += processOnCPU->MemoryRequested;
     // processOnCPU = DequeueProcess(EXITQUEUE);
     // XXX free(processOnCPU);
 
@@ -335,18 +336,32 @@ void LongtermScheduler(void){
 void InfiniteMemory(void){
   ProcessControlBlock *currentProcess = DequeueProcess(JOBQUEUE);
   while (currentProcess) {
-    currentProcess->TimeInJobQueue = Now() - currentProcess->JobArrivalTime; // Set TimeInJobQueue
-    SumMetrics[AWTJQ] += currentProcess->TimeInJobQueue;
-    NumberofJobs[AWTJQ]++;
-    currentProcess->JobStartTime = Now(); // Set JobStartTime
-    EnqueueProcess(READYQUEUE,currentProcess); // Place process in Ready Queue
-    currentProcess->state = READY; // Update process state
+    PutOnReadyQueue(currentProcess);
     currentProcess = DequeueProcess(JOBQUEUE);
   }
 }
 
 void OptimalMemoryAccessPolicy(void){
-  
+  ProcessControlBlock *currentProcess = DequeueProcess(JOBQUEUE);
+  if (currentProcess){
+    Identifier IDLastProcess = currentProcess->ProcessID;
+    EnqueueProcess(JOBQUEUE, currentProcess);
+    currentProcess = DequeueProcess(JOBQUEUE);
+    while (currentProcess){
+      if (AvailableMemory >= currentProcess->MemoryRequested){
+        PutOnReadyQueue(currentProcess);
+        AvailableMemory -= currentProcess->MemoryRequested;
+        currentProcess->MemoryAllocated = currentProcess->MemoryRequested;
+      }
+      else {
+	EnqueueProcess(JOBQUEUE,currentProcess);
+      }
+      if (currentProcess->ProcessID == IDLastProcess){
+        break;
+      }
+      currentProcess = DequeueProcess(JOBQUEUE);
+    }
+  }
 }
 
 void Paging(void){
@@ -359,6 +374,15 @@ void BestFit(void){
 
 void WorstFit(void){
   
+}
+
+void PutOnReadyQueue(ProcessControlBlock *currentProcess){
+  currentProcess->TimeInJobQueue = Now() - currentProcess->JobArrivalTime; // Set TimeInJobQueue
+  SumMetrics[AWTJQ] += currentProcess->TimeInJobQueue;
+  NumberofJobs[AWTJQ]++;
+  currentProcess->JobStartTime = Now(); // Set JobStartTime
+  EnqueueProcess(READYQUEUE,currentProcess); // Place process in Ready Queue
+  currentProcess->state = READY; // Update process state
 }
 
 
