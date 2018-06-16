@@ -48,6 +48,7 @@ typedef enum {INFINITE,OMAP,PAGING,BESTFIT,WORSFIT} MemPolicy;
 Quantity NumberofJobs[MAXMETRICS]; // Number of Jobs for which metric was collected
 Average  SumMetrics[MAXMETRICS]; // Sum for each Metrics
 MemPolicy MemoryPolicy;
+double   PageSize;
 
 /*****************************************************************************\
 *                               Function prototypes                           *
@@ -96,6 +97,7 @@ int main (int argc, char **argv) {
 
 void ManageProcesses(void){
   MemoryPolicy = OMAP;
+  PageSize = 256;
   ManagementInitialization();
   while (1) {
     IO();
@@ -302,7 +304,7 @@ void BookKeeping(void){
   }
 
   printf("\n********* Processes Managemenent Numbers ******************************\n");
-  printf("Policy Number = %d, Quantum = %.6f   Show = %d\n", PolicyNumber, Quantum, Show);
+  printf("Policy Number = %d, Quantum = %.6f, Show = %d, Memory Policy = %d, Page Size = %d\n", PolicyNumber, Quantum, Show, MemoryPolicy, PageSize);
   printf("Number of Completed Processes = %d\n", NumberofJobs[THGT]);
   printf("ATAT = %f ART = %f CBT = %f T = %f AWT = %f AWTJQ = %f\n", 
 	 SumMetrics[TAT], SumMetrics[RT], SumMetrics[CBT], 
@@ -350,8 +352,6 @@ void OptimalMemoryAccessPolicy(void){
     while (currentProcess){
       if (AvailableMemory >= currentProcess->MemoryRequested){
         PutOnReadyQueue(currentProcess);
-        AvailableMemory -= currentProcess->MemoryRequested;
-        currentProcess->MemoryAllocated = currentProcess->MemoryRequested;
       }
       else {
 	EnqueueProcess(JOBQUEUE,currentProcess);
@@ -383,6 +383,8 @@ void PutOnReadyQueue(ProcessControlBlock *currentProcess){
   currentProcess->JobStartTime = Now(); // Set JobStartTime
   EnqueueProcess(READYQUEUE,currentProcess); // Place process in Ready Queue
   currentProcess->state = READY; // Update process state
+  AvailableMemory -= currentProcess->MemoryRequested;
+  currentProcess->MemoryAllocated = currentProcess->MemoryRequested;
 }
 
 
