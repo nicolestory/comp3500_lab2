@@ -18,7 +18,8 @@
 *                             Global data types                               *
 \*****************************************************************************/
 
-typedef enum {TAT,RT,CBT,THGT,WT} Metric;
+typedef enum {TAT,RT,CBT,THGT,WT,AWTJQ} Metric;
+typedef enum {INFINITE,OMAP,PAGING,BESTFIT,WORSFIT} MemPolicy;
 
 
 /*****************************************************************************\
@@ -29,7 +30,7 @@ typedef enum {TAT,RT,CBT,THGT,WT} Metric;
 #define RR              3 
 
 
-#define MAXMETRICS      5 
+#define MAXMETRICS      6 
 
 
 
@@ -44,8 +45,10 @@ typedef enum {TAT,RT,CBT,THGT,WT} Metric;
 *                                  Global data                                *
 \*****************************************************************************/
 
-Quantity NumberofJobs[MAXMETRICS]; // Number of Jobs for which metric was collected
-Average  SumMetrics[MAXMETRICS]; // Sum for each Metrics
+Quantity  NumberofJobs[MAXMETRICS]; // Number of Jobs for which metric was collected
+Average   SumMetrics[MAXMETRICS]; // Sum for each Metrics
+MemPolicy MemoryPolicy;
+int       PageSize;
 
 /*****************************************************************************\
 *                               Function prototypes                           *
@@ -60,6 +63,12 @@ void                 IO();
 void                 CPUScheduler(Identifier whichPolicy);
 ProcessControlBlock *SRTF();
 void                 Dispatcher();
+void                 InfiniteMemory();
+void                 OptimalMemoryAccessPolicy();
+void                 Paging();
+void                 BestFit();
+void                 WorstFit();
+void                 PutOnReadyQueue(ProcessControlBlock *currentProcess, Memory MemoryNeeded);
 
 /*****************************************************************************\
 * function: main()                                                            *
@@ -87,6 +96,8 @@ int main (int argc, char **argv) {
 \***********************************************************************/
 
 void ManageProcesses(void){
+  MemoryPolicy = PAGING;
+  PageSize = 256; 
   ManagementInitialization();
   while (1) {
     IO();
@@ -212,7 +223,7 @@ void Dispatcher() {
   }
   
   if (processOnCPU->TimeInCpu >= processOnCPU-> TotalJobDuration) { // Process Complete
-    printf(" >>>>>Process # %d complete, %d Processes Completed So Far <<<<<<\n",
+    printf(">>>>>> Process # %d complete, %d Processes Completed So Far <<<<<<\n",
 	   processOnCPU->ProcessID,NumberofJobs[THGT]);   
     processOnCPU=DequeueProcess(RUNNINGQUEUE);
     EnqueueProcess(EXITQUEUE,processOnCPU);
@@ -224,7 +235,7 @@ void Dispatcher() {
     SumMetrics[TAT]     += Now() - processOnCPU->JobArrivalTime;
     SumMetrics[WT]      += processOnCPU->TimeInReadyQueue;
 
-
+    AvailableMemory += processOnCPU->MemoryAllocated;
     // processOnCPU = DequeueProcess(EXITQUEUE);
     // XXX free(processOnCPU);
 
@@ -288,13 +299,16 @@ void BookKeeping(void){
   if (NumberofJobs[WT] > 0){
     SumMetrics[WT] = SumMetrics[WT]/ (Average) NumberofJobs[WT];
   }
+  if (NumberofJobs[AWTJQ] > 0){
+    SumMetrics[AWTJQ] = SumMetrics[AWTJQ]/ (Average) NumberofJobs[AWTJQ];
+  }
 
   printf("\n********* Processes Managemenent Numbers ******************************\n");
-  printf("Policy Number = %d, Quantum = %.6f   Show = %d\n", PolicyNumber, Quantum, Show);
+  printf("Policy Number = %d, Quantum = %.6f, Show = %d, Memory Policy = %d, Page Size = %d\n", PolicyNumber, Quantum, Show, MemoryPolicy, PageSize);
   printf("Number of Completed Processes = %d\n", NumberofJobs[THGT]);
-  printf("ATAT=%f   ART=%f  CBT = %f  T=%f AWT=%f\n", 
+  printf("ATAT = %f ART = %f CBT = %f T = %f AWT = %f AWTJQ = %f\n", 
 	 SumMetrics[TAT], SumMetrics[RT], SumMetrics[CBT], 
-	 NumberofJobs[THGT]/Now(), SumMetrics[WT]);
+	 NumberofJobs[THGT]/Now(), SumMetrics[WT], SumMetrics[AWTJQ]);
 
   exit(0);
 }
@@ -307,14 +321,93 @@ void BookKeeping(void){
 *           then move Process from Job Queue to Ready Queue             *
 \***********************************************************************/
 void LongtermScheduler(void){
+  switch(MemoryPolicy){
+    case INFINITE : InfiniteMemory();
+      break;
+    case OMAP     : OptimalMemoryAccessPolicy();
+      break;
+    case PAGING   : Paging();
+      break;
+    case BESTFIT  : BestFit();
+      break;
+    case WORSFIT  : WorstFit();
+      break;
+  }
+}
+
+void InfiniteMemory(void){
   ProcessControlBlock *currentProcess = DequeueProcess(JOBQUEUE);
   while (currentProcess) {
-    currentProcess->TimeInJobQueue = Now() - currentProcess->JobArrivalTime; // Set TimeInJobQueue
-    currentProcess->JobStartTime = Now(); // Set JobStartTime
-    EnqueueProcess(READYQUEUE,currentProcess); // Place process in Ready Queue
-    currentProcess->state = READY; // Update process state
+    PutOnReadyQueue(currentProcess, currentProcess->MemoryRequested);
     currentProcess = DequeueProcess(JOBQUEUE);
   }
+}
+
+void OptimalMemoryAccessPolicy(void){
+  ProcessControlBlock *currentProcess = DequeueProcess(JOBQUEUE);
+  if (currentProcess){
+    Identifier IDLastProcess = currentProcess->ProcessID;
+    EnqueueProcess(JOBQUEUE, currentProcess);
+    currentProcess = DequeueProcess(JOBQUEUE);
+    while (currentProcess){
+      if (AvailableMemory >= currentProcess->MemoryRequested){
+        PutOnReadyQueue(currentProcess, currentProcess->MemoryRequested);
+      }
+      else {
+	EnqueueProcess(JOBQUEUE,currentProcess);
+      }
+      if (currentProcess->ProcessID == IDLastProcess){
+        break;
+      }
+      currentProcess = DequeueProcess(JOBQUEUE);
+    }
+  }
+}
+
+void Paging(void){
+  int NumberOfAvailablePages = AvailableMemory / PageSize;
+  ProcessControlBlock *currentProcess = DequeueProcess(JOBQUEUE);
+  if (currentProcess){
+    Identifier IDLastProcess = currentProcess->ProcessID;
+    EnqueueProcess(JOBQUEUE, currentProcess);
+    currentProcess = DequeueProcess(JOBQUEUE);
+    while (currentProcess){
+      int NumberOfRequestedPages = currentProcess->MemoryRequested / PageSize;
+      if (currentProcess->MemoryRequested % PageSize > 0){
+        NumberOfRequestedPages++;
+      }
+      if (NumberOfAvailablePages >= NumberOfRequestedPages){
+        PutOnReadyQueue(currentProcess, NumberOfRequestedPages * PageSize);
+        NumberOfAvailablePages -= NumberOfRequestedPages;
+      }
+      else {
+	EnqueueProcess(JOBQUEUE,currentProcess);
+      }
+      if (currentProcess->ProcessID == IDLastProcess){
+        break;
+      }
+      currentProcess = DequeueProcess(JOBQUEUE);
+    }
+  }
+}
+
+void BestFit(void){
+  
+}
+
+void WorstFit(void){
+  
+}
+
+void PutOnReadyQueue(ProcessControlBlock *currentProcess, Memory MemoryNeeded){
+  currentProcess->TimeInJobQueue = Now() - currentProcess->JobArrivalTime; // Set TimeInJobQueue
+  SumMetrics[AWTJQ] += currentProcess->TimeInJobQueue;
+  NumberofJobs[AWTJQ]++;
+  currentProcess->JobStartTime = Now(); // Set JobStartTime
+  EnqueueProcess(READYQUEUE,currentProcess); // Place process in Ready Queue
+  currentProcess->state = READY; // Update process state
+  AvailableMemory -= MemoryNeeded;
+  currentProcess->MemoryAllocated = MemoryNeeded;
 }
 
 
