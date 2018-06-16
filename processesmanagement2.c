@@ -45,10 +45,10 @@ typedef enum {INFINITE,OMAP,PAGING,BESTFIT,WORSFIT} MemPolicy;
 *                                  Global data                                *
 \*****************************************************************************/
 
-Quantity NumberofJobs[MAXMETRICS]; // Number of Jobs for which metric was collected
-Average  SumMetrics[MAXMETRICS]; // Sum for each Metrics
+Quantity  NumberofJobs[MAXMETRICS]; // Number of Jobs for which metric was collected
+Average   SumMetrics[MAXMETRICS]; // Sum for each Metrics
 MemPolicy MemoryPolicy;
-double   PageSize;
+int       PageSize;
 
 /*****************************************************************************\
 *                               Function prototypes                           *
@@ -68,7 +68,7 @@ void                 OptimalMemoryAccessPolicy();
 void                 Paging();
 void                 BestFit();
 void                 WorstFit();
-void                 PutOnReadyQueue(ProcessControlBlock *currentProcess);
+void                 PutOnReadyQueue(ProcessControlBlock *currentProcess, Memory MemoryNeeded);
 
 /*****************************************************************************\
 * function: main()                                                            *
@@ -96,8 +96,8 @@ int main (int argc, char **argv) {
 \***********************************************************************/
 
 void ManageProcesses(void){
-  MemoryPolicy = OMAP;
-  PageSize = 256;
+  MemoryPolicy = PAGING;
+  PageSize = 256; 
   ManagementInitialization();
   while (1) {
     IO();
@@ -235,7 +235,7 @@ void Dispatcher() {
     SumMetrics[TAT]     += Now() - processOnCPU->JobArrivalTime;
     SumMetrics[WT]      += processOnCPU->TimeInReadyQueue;
 
-    AvailableMemory += processOnCPU->MemoryRequested;
+    AvailableMemory += processOnCPU->MemoryAllocated;
     // processOnCPU = DequeueProcess(EXITQUEUE);
     // XXX free(processOnCPU);
 
@@ -338,7 +338,7 @@ void LongtermScheduler(void){
 void InfiniteMemory(void){
   ProcessControlBlock *currentProcess = DequeueProcess(JOBQUEUE);
   while (currentProcess) {
-    PutOnReadyQueue(currentProcess);
+    PutOnReadyQueue(currentProcess, currentProcess->MemoryRequested);
     currentProcess = DequeueProcess(JOBQUEUE);
   }
 }
@@ -351,7 +351,7 @@ void OptimalMemoryAccessPolicy(void){
     currentProcess = DequeueProcess(JOBQUEUE);
     while (currentProcess){
       if (AvailableMemory >= currentProcess->MemoryRequested){
-        PutOnReadyQueue(currentProcess);
+        PutOnReadyQueue(currentProcess, currentProcess->MemoryRequested);
       }
       else {
 	EnqueueProcess(JOBQUEUE,currentProcess);
@@ -365,7 +365,30 @@ void OptimalMemoryAccessPolicy(void){
 }
 
 void Paging(void){
-  
+  int NumberOfAvailablePages = AvailableMemory / PageSize;
+  ProcessControlBlock *currentProcess = DequeueProcess(JOBQUEUE);
+  if (currentProcess){
+    Identifier IDLastProcess = currentProcess->ProcessID;
+    EnqueueProcess(JOBQUEUE, currentProcess);
+    currentProcess = DequeueProcess(JOBQUEUE);
+    while (currentProcess){
+      int NumberOfRequestedPages = currentProcess->MemoryRequested / PageSize;
+      if (currentProcess->MemoryRequested % PageSize > 0){
+        NumberOfRequestedPages++;
+      }
+      if (NumberOfAvailablePages >= NumberOfRequestedPages){
+        PutOnReadyQueue(currentProcess, NumberOfRequestedPages * PageSize);
+        NumberOfAvailablePages -= NumberOfRequestedPages;
+      }
+      else {
+	EnqueueProcess(JOBQUEUE,currentProcess);
+      }
+      if (currentProcess->ProcessID == IDLastProcess){
+        break;
+      }
+      currentProcess = DequeueProcess(JOBQUEUE);
+    }
+  }
 }
 
 void BestFit(void){
@@ -376,15 +399,15 @@ void WorstFit(void){
   
 }
 
-void PutOnReadyQueue(ProcessControlBlock *currentProcess){
+void PutOnReadyQueue(ProcessControlBlock *currentProcess, Memory MemoryNeeded){
   currentProcess->TimeInJobQueue = Now() - currentProcess->JobArrivalTime; // Set TimeInJobQueue
   SumMetrics[AWTJQ] += currentProcess->TimeInJobQueue;
   NumberofJobs[AWTJQ]++;
   currentProcess->JobStartTime = Now(); // Set JobStartTime
   EnqueueProcess(READYQUEUE,currentProcess); // Place process in Ready Queue
   currentProcess->state = READY; // Update process state
-  AvailableMemory -= currentProcess->MemoryRequested;
-  currentProcess->MemoryAllocated = currentProcess->MemoryRequested;
+  AvailableMemory -= MemoryNeeded;
+  currentProcess->MemoryAllocated = MemoryNeeded;
 }
 
 
