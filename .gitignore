@@ -4,3 +4,4 @@ Source.*
 CMakeLists.txt
 cmake-build-debug/
 *.swp
+output*
