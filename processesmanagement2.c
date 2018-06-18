@@ -42,12 +42,12 @@ typedef struct MemoryBlock {
     ProcessControlBlock *process;
     struct MemoryBlock *next;
     struct MemoryBlock *prev;
-};
+} MemoryBlock;
 
 typedef struct MemoryQueue {
-    struct MemoryBlock *Head;
-    struct MemoryBlock *Tail;
-};
+    MemoryBlock *Head;
+    MemoryBlock *Tail;
+} MemoryQueue;
 
 
 /*****************************************************************************\
@@ -59,7 +59,7 @@ Average   SumMetrics[MAXMETRICS]; // Sum for each Metrics
 MemPolicy MemoryPolicy;
 int       PageSize;
 int       TotalMemory;
-struct MemoryQueue memoryQueue;
+MemoryQueue memoryQueue;
 
 
 /*****************************************************************************\
@@ -80,7 +80,7 @@ void                 OptimalMemoryAccessPolicy();
 void                 Paging();
 void                 BestFit();
 void                 WorstFit();
-void                 putInMemoryQueue(struct MemoryBlock *toAdd, struct MemoryBlock *predecessor);
+void                 putInMemoryQueue(MemoryBlock *toAdd, MemoryBlock *predecessor);
 void                 removeFromMemoryQueue(int processID);
 void                 PutOnReadyQueue(ProcessControlBlock *currentProcess, Memory MemoryNeeded);
 
@@ -418,15 +418,15 @@ void BestFit(void){
 
   if (currentProcess) {
       int smallestHoleSize = -1;
-      struct MemoryBlock *predecessor = NULL;
+      MemoryBlock *predecessor = NULL;
 
-      struct MemoryBlock *currentBlock = memoryQueue.Head;
-      if (currentBlock != NULL && currentBlock->process->TopOfMemory > currentProcess->MemoryRequested) {
+      MemoryBlock *currentBlock = memoryQueue.Head;
+      if (currentBlock != NULL && currentBlock->process->TopOfMemory >= currentProcess->MemoryRequested) {
           smallestHoleSize = currentBlock->process->TopOfMemory;
       }
 
       while (currentBlock != NULL) {
-          struct MemoryBlock *nextBlock = currentBlock->next;
+          MemoryBlock *nextBlock = currentBlock->next;
 
           int holeSize = 0;
           if (nextBlock == NULL) {
@@ -446,7 +446,7 @@ void BestFit(void){
       if (smallestHoleSize != -1) {
           currentProcess->TopOfMemory = predecessor->process->TopOfMemory + predecessor->process->MemoryRequested;
 
-          struct MemoryBlock newBlock;
+          MemoryBlock newBlock;
           newBlock.process = currentProcess;
 
           putInMemoryQueue(&newBlock, predecessor);
@@ -465,9 +465,9 @@ void WorstFit(void){
   }
 }
 
-void putInMemoryQueue(struct MemoryBlock *toAdd, struct MemoryBlock *predecessor) {
+void putInMemoryQueue(MemoryBlock *toAdd, MemoryBlock *predecessor) {
     if (predecessor == NULL) { //new head
-        struct MemoryBlock *currentHead = memoryQueue.Head;
+        MemoryBlock *currentHead = memoryQueue.Head;
 
         if (currentHead == NULL) { //toAdd is only in queue
             memoryQueue.Head = toAdd;
@@ -492,7 +492,7 @@ void putInMemoryQueue(struct MemoryBlock *toAdd, struct MemoryBlock *predecessor
 }
 
 void removeFromMemoryQueue(int processID) {
-    struct MemoryBlock *currentBlock = memoryQueue.Head;
+    MemoryBlock *currentBlock = memoryQueue.Head;
     while (currentBlock != NULL) {
         if (currentBlock->process->ProcessID == processID) {
             if (currentBlock->next != NULL && currentBlock->prev != NULL) {
