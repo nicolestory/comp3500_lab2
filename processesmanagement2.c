@@ -38,7 +38,16 @@ typedef enum {INFINITE,OMAP,PAGING,BESTFIT,WORSFIT} MemPolicy;
 *                            Global data structures                           *
 \*****************************************************************************/
 
+typedef struct MemoryBlock {
+    ProcessControlBlock *process;
+    struct MemoryBlock *next;
+    struct MemoryBlock *prev;
+};
 
+typedef struct MemoryQueue {
+    struct MemoryBlock *Head;
+    struct MemoryBlock *Tail;
+};
 
 
 /*****************************************************************************\
@@ -49,6 +58,9 @@ Quantity  NumberofJobs[MAXMETRICS]; // Number of Jobs for which metric was colle
 Average   SumMetrics[MAXMETRICS]; // Sum for each Metrics
 MemPolicy MemoryPolicy;
 int       PageSize;
+int       TotalMemory;
+struct MemoryQueue memoryQueue;
+
 
 /*****************************************************************************\
 *                               Function prototypes                           *
@@ -68,6 +80,8 @@ void                 OptimalMemoryAccessPolicy();
 void                 Paging();
 void                 BestFit();
 void                 WorstFit();
+void                 putInMemoryQueue(struct MemoryBlock *toAdd, struct MemoryBlock *predecessor);
+void                 removeFromMemoryQueue(int processID);
 void                 PutOnReadyQueue(ProcessControlBlock *currentProcess, Memory MemoryNeeded);
 
 /*****************************************************************************\
@@ -97,7 +111,12 @@ int main (int argc, char **argv) {
 
 void ManageProcesses(void){
   MemoryPolicy = PAGING;
-  PageSize = 256; 
+  if (MemoryPolicy == PAGING) {
+      PageSize = 256;
+  } else if (MemoryPolicy == BESTFIT || MemoryPolicy == WORSFIT) {
+      TotalMemory = AvailableMemory;
+  }
+
   ManagementInitialization();
   while (1) {
     IO();
@@ -236,6 +255,9 @@ void Dispatcher() {
     SumMetrics[WT]      += processOnCPU->TimeInReadyQueue;
 
     AvailableMemory += processOnCPU->MemoryAllocated;
+    if (MemoryPolicy == BESTFIT || MemoryPolicy == WORSFIT) {
+        removeFromMemoryQueue(processOnCPU->ProcessID);
+    }
     // processOnCPU = DequeueProcess(EXITQUEUE);
     // XXX free(processOnCPU);
 
@@ -345,18 +367,18 @@ void InfiniteMemory(void){
 
 void OptimalMemoryAccessPolicy(void){
   ProcessControlBlock *currentProcess = DequeueProcess(JOBQUEUE);
-  if (currentProcess){
+  if (currentProcess) {
     Identifier IDLastProcess = currentProcess->ProcessID;
     EnqueueProcess(JOBQUEUE, currentProcess);
     currentProcess = DequeueProcess(JOBQUEUE);
-    while (currentProcess){
-      if (AvailableMemory >= currentProcess->MemoryRequested){
+    while (currentProcess) {
+      if (AvailableMemory >= currentProcess->MemoryRequested) {
         PutOnReadyQueue(currentProcess, currentProcess->MemoryRequested);
       }
       else {
-	EnqueueProcess(JOBQUEUE,currentProcess);
+	    EnqueueProcess(JOBQUEUE, currentProcess);
       }
-      if (currentProcess->ProcessID == IDLastProcess){
+      if (currentProcess->ProcessID == IDLastProcess) {
         break;
       }
       currentProcess = DequeueProcess(JOBQUEUE);
@@ -365,25 +387,25 @@ void OptimalMemoryAccessPolicy(void){
 }
 
 void Paging(void){
-  int NumberOfAvailablePages = AvailableMemory / PageSize;
   ProcessControlBlock *currentProcess = DequeueProcess(JOBQUEUE);
-  if (currentProcess){
+  if (currentProcess) {
+    int NumberOfAvailablePages = AvailableMemory / PageSize;
     Identifier IDLastProcess = currentProcess->ProcessID;
     EnqueueProcess(JOBQUEUE, currentProcess);
     currentProcess = DequeueProcess(JOBQUEUE);
-    while (currentProcess){
+    while (currentProcess) {
       int NumberOfRequestedPages = currentProcess->MemoryRequested / PageSize;
-      if (currentProcess->MemoryRequested % PageSize > 0){
+      if (currentProcess->MemoryRequested % PageSize > 0) {
         NumberOfRequestedPages++;
       }
-      if (NumberOfAvailablePages >= NumberOfRequestedPages){
+      if (NumberOfAvailablePages >= NumberOfRequestedPages) {
         PutOnReadyQueue(currentProcess, NumberOfRequestedPages * PageSize);
         NumberOfAvailablePages -= NumberOfRequestedPages;
       }
       else {
-	EnqueueProcess(JOBQUEUE,currentProcess);
+	    EnqueueProcess(JOBQUEUE,currentProcess);
       }
-      if (currentProcess->ProcessID == IDLastProcess){
+      if (currentProcess->ProcessID == IDLastProcess) {
         break;
       }
       currentProcess = DequeueProcess(JOBQUEUE);
@@ -392,11 +414,107 @@ void Paging(void){
 }
 
 void BestFit(void){
-  
+  ProcessControlBlock *currentProcess = DequeueProcess(JOBQUEUE);
+
+  if (currentProcess) {
+      int smallestHoleSize = -1;
+      struct MemoryBlock *predecessor = NULL;
+
+      struct MemoryBlock *currentBlock = memoryQueue.Head;
+      if (currentBlock != NULL && currentBlock->process->TopOfMemory > currentProcess->MemoryRequested) {
+          smallestHoleSize = currentBlock->process->TopOfMemory;
+      }
+
+      while (currentBlock != NULL) {
+          struct MemoryBlock *nextBlock = currentBlock->next;
+
+          int holeSize = 0;
+          if (nextBlock == NULL) {
+              holeSize = TotalMemory - currentBlock->process->TopOfMemory - currentBlock->process->MemoryRequested;
+          } else {
+              holeSize = nextBlock->process->TopOfMemory - currentBlock->process->TopOfMemory - currentBlock->process->MemoryRequested;
+          }
+
+          if ((holeSize == -1 || holeSize < smallestHoleSize) && holeSize >= currentProcess->MemoryRequested) {
+              smallestHoleSize = holeSize;
+              predecessor = currentBlock;
+          }
+
+          currentBlock = currentBlock->next;
+      }
+
+      if (smallestHoleSize != -1) {
+          currentProcess->TopOfMemory = predecessor->process->TopOfMemory + predecessor->process->MemoryRequested;
+
+          struct MemoryBlock newBlock;
+          newBlock.process = currentProcess;
+
+          putInMemoryQueue(&newBlock, predecessor);
+          PutOnReadyQueue(currentProcess, currentProcess->MemoryRequested);\
+      } else {
+          EnqueueProcess(JOBQUEUE, currentProcess);
+      }
+  }
 }
 
 void WorstFit(void){
-  
+  ProcessControlBlock *currentProcess = DequeueProcess(JOBQUEUE);
+
+  if (currentProcess) {
+
+  }
+}
+
+void putInMemoryQueue(struct MemoryBlock *toAdd, struct MemoryBlock *predecessor) {
+    if (predecessor == NULL) { //new head
+        struct MemoryBlock *currentHead = memoryQueue.Head;
+
+        if (currentHead == NULL) { //toAdd is only in queue
+            memoryQueue.Head = toAdd;
+            memoryQueue.Tail = toAdd;
+        } else {
+            memoryQueue.Head = toAdd;
+
+            toAdd->next = currentHead;
+            currentHead->prev = toAdd;
+        }
+    } else {
+        if (predecessor->next == NULL) {
+            memoryQueue.Tail = toAdd;
+        } else {
+            toAdd->next = predecessor->next;
+            predecessor->next->prev = toAdd;
+        }
+
+        toAdd->prev = predecessor;
+        predecessor->next = toAdd;
+    }
+}
+
+void removeFromMemoryQueue(int processID) {
+    struct MemoryBlock *currentBlock = memoryQueue.Head;
+    while (currentBlock != NULL) {
+        if (currentBlock->process->ProcessID == processID) {
+            if (currentBlock->next != NULL && currentBlock->prev != NULL) {
+                currentBlock->next->prev = currentBlock->prev;
+                currentBlock->prev->next = currentBlock->next;
+            }
+            else if (currentBlock->next != NULL) {
+                memoryQueue.Head = currentBlock->next;
+                currentBlock->next->prev = NULL;
+            }
+            else if (currentBlock->prev != NULL) {
+                memoryQueue.Tail = currentBlock->prev;
+                currentBlock->prev->next = NULL;
+            }
+            else {
+                memoryQueue.Head = NULL;
+                memoryQueue.Tail = NULL;
+            }
+        }
+
+        currentBlock = currentBlock->next;
+    }
 }
 
 void PutOnReadyQueue(ProcessControlBlock *currentProcess, Memory MemoryNeeded){
