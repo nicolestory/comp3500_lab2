@@ -110,12 +110,10 @@ int main (int argc, char **argv) {
 \***********************************************************************/
 
 void ManageProcesses(void){
-  MemoryPolicy = PAGING;
-  if (MemoryPolicy == PAGING) {
-      PageSize = 256;
-  } else if (MemoryPolicy == BESTFIT || MemoryPolicy == WORSFIT) {
-      TotalMemory = AvailableMemory;
-  }
+  MemoryPolicy = BESTFIT;
+
+  PageSize = 256;
+  TotalMemory = AvailableMemory;
 
   ManagementInitialization();
   while (1) {
@@ -421,7 +419,9 @@ void BestFit(void){
       MemoryBlock *predecessor = NULL;
 
       MemoryBlock *currentBlock = memoryQueue.Head;
-      if (currentBlock != NULL && currentBlock->process->TopOfMemory >= currentProcess->MemoryRequested) {
+      if (currentBlock == NULL) {
+          smallestHoleSize = TotalMemory;
+      } else if (currentBlock->process->TopOfMemory >= currentProcess->MemoryRequested) {
           smallestHoleSize = currentBlock->process->TopOfMemory;
       }
 
@@ -435,7 +435,7 @@ void BestFit(void){
               holeSize = nextBlock->process->TopOfMemory - currentBlock->process->TopOfMemory - currentBlock->process->MemoryRequested;
           }
 
-          if ((holeSize == -1 || holeSize < smallestHoleSize) && holeSize >= currentProcess->MemoryRequested) {
+          if ((smallestHoleSize == -1 || holeSize < smallestHoleSize) && holeSize >= currentProcess->MemoryRequested) {
               smallestHoleSize = holeSize;
               predecessor = currentBlock;
           }
@@ -444,13 +444,20 @@ void BestFit(void){
       }
 
       if (smallestHoleSize != -1) {
-          currentProcess->TopOfMemory = predecessor->process->TopOfMemory + predecessor->process->MemoryRequested;
+          if (predecessor == NULL) {
+              currentProcess->TopOfMemory = 0;
+          } else {
+              currentProcess->TopOfMemory = predecessor->process->TopOfMemory + predecessor->process->MemoryRequested;
+          }
 
-          MemoryBlock newBlock;
-          newBlock.process = currentProcess;
+          MemoryBlock *newBlock;
+          newBlock = malloc(sizeof(MemoryBlock));
+          newBlock->process = currentProcess;
+          newBlock->prev = NULL;
+          newBlock->next = NULL;
 
-          putInMemoryQueue(&newBlock, predecessor);
-          PutOnReadyQueue(currentProcess, currentProcess->MemoryRequested);\
+          putInMemoryQueue(newBlock, predecessor);
+          PutOnReadyQueue(currentProcess, currentProcess->MemoryRequested);
       } else {
           EnqueueProcess(JOBQUEUE, currentProcess);
       }
