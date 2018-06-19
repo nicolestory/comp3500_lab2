@@ -466,36 +466,44 @@ void BestFit(void){
 
 void WorstFit(void){
     ProcessControlBlock *currentProcess = DequeueProcess(JOBQUEUE);
-
     if (currentProcess) {
+        int initProcessID = currentProcess->ProcessID;
+
         int largestHoleSize = -1;
         MemoryBlock *predecessor = NULL;
 
-        MemoryBlock *currentBlock = memoryQueue.Head;
-        if (currentBlock == NULL) {
-            largestHoleSize = TotalMemory;
-        } else if (currentBlock->process->TopOfMemory >= currentProcess->MemoryRequested) {
-            largestHoleSize = currentBlock->process->TopOfMemory;
-        }
-
-        while (currentBlock != NULL) {
-            MemoryBlock *nextBlock = currentBlock->next;
-
-            int holeSize = 0;
-            if (nextBlock == NULL) {
-                holeSize = TotalMemory - currentBlock->process->TopOfMemory - currentBlock->process->MemoryRequested;
-            } else {
-                holeSize = nextBlock->process->TopOfMemory - currentBlock->process->TopOfMemory -
-                           currentBlock->process->MemoryRequested;
+        do {
+            MemoryBlock *currentBlock = memoryQueue.Head;
+            if (currentBlock == NULL) {
+                largestHoleSize = TotalMemory;
+            } else if (currentBlock->process->TopOfMemory >= currentProcess->MemoryRequested) {
+                largestHoleSize = currentBlock->process->TopOfMemory;
             }
 
-            if ((largestHoleSize == -1 || holeSize > largestHoleSize) && holeSize >= currentProcess->MemoryRequested) {
-                largestHoleSize = holeSize;
-                predecessor = currentBlock;
+            while (currentBlock != NULL) {
+                MemoryBlock *nextBlock = currentBlock->next;
+
+                int holeSize = 0;
+                if (nextBlock == NULL) {
+                    holeSize = TotalMemory - currentBlock->process->TopOfMemory - currentBlock->process->MemoryRequested;
+                } else {
+                    holeSize = nextBlock->process->TopOfMemory - currentBlock->process->TopOfMemory -
+                               currentBlock->process->MemoryRequested;
+                }
+
+                if ((largestHoleSize == -1 || holeSize > largestHoleSize) && holeSize >= currentProcess->MemoryRequested) {
+                    largestHoleSize = holeSize;
+                    predecessor = currentBlock;
+                }
+
+                currentBlock = currentBlock->next;
             }
 
-            currentBlock = currentBlock->next;
-        }
+            if (largestHoleSize == -1) {
+                EnqueueProcess(JOBQUEUE,  currentProcess);
+                currentProcess = DequeueProcess(JOBQUEUE);
+            }
+        } while (largestHoleSize == -1 && currentProcess->ProcessID != initProcessID);
 
         if (largestHoleSize != -1) {
             if (predecessor == NULL) {
@@ -512,8 +520,6 @@ void WorstFit(void){
 
             putInMemoryQueue(newBlock, predecessor);
             PutOnReadyQueue(currentProcess, currentProcess->MemoryRequested);
-        } else {
-            EnqueueProcess(JOBQUEUE, currentProcess);
         }
     }
 }
