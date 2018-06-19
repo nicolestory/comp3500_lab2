@@ -546,8 +546,12 @@ void putInMemoryQueue(MemoryBlock *toAdd, MemoryBlock *predecessor) {
 
 void removeFromMemoryQueue(int processID) {
     MemoryBlock *currentBlock = memoryQueue.Head;
-    while (currentBlock != NULL) {
+    int found = 0;
+
+    while (currentBlock != NULL && found == 0) {
         if (currentBlock->process->ProcessID == processID) {
+	    found = 1;
+
             if (currentBlock->next != NULL && currentBlock->prev != NULL) {
                 currentBlock->next->prev = currentBlock->prev;
                 currentBlock->prev->next = currentBlock->next;
